@@ -3,6 +3,7 @@ import pygame
 from direction import Direction
 from food import Food
 from snake import Snake
+from pathfinding import BFSStrategy, DFSStrategy
 
 
 class Game:
@@ -14,7 +15,7 @@ class Game:
         self.cell = 40
 
         self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption("Snake Game 🐍")
+        pygame.display.set_caption("Snake Game")
 
         # fonts (mononoki)
         self.font = pygame.font.Font("fonts/mononoki-Regular.ttf", 24)
@@ -38,12 +39,21 @@ class Game:
         self.food = Food(self.width, self.height, self.cell)
         self.food.respawn(self.snake.segments)
 
+        # ---- Pathfinding strategies (SOLID Strategy Pattern) ----
+        self.strategies = [BFSStrategy(), DFSStrategy()]
+        self.strategy_index = 0
+        self.snake.set_pathfinding_strategy(self.strategies[self.strategy_index])
+
     def reset_game(self):
         self.score = 0
         self.auto_pilot = False
+
         self.snake = Snake(self.cell)
         self.food = Food(self.width, self.height, self.cell)
         self.food.respawn(self.snake.segments)
+
+        # keep current strategy after reset
+        self.snake.set_pathfinding_strategy(self.strategies[self.strategy_index])
 
     def run(self):
         running = True
@@ -71,7 +81,7 @@ class Game:
                         if event.key == pygame.K_UP:
                             self.snake.try_set_direction(Direction.UP)
                         elif event.key == pygame.K_DOWN:
-                                self.snake.try_set_direction(Direction.DOWN)
+                            self.snake.try_set_direction(Direction.DOWN)
                         elif event.key == pygame.K_LEFT:
                             self.snake.try_set_direction(Direction.LEFT)
                         elif event.key == pygame.K_RIGHT:
@@ -80,6 +90,10 @@ class Game:
                             self.state = "menu"
                         elif event.key == pygame.K_a:
                             self.auto_pilot = not self.auto_pilot
+                        elif event.key == pygame.K_s:
+                            # switch BFS <-> DFS
+                            self.strategy_index = (self.strategy_index + 1) % len(self.strategies)
+                            self.snake.set_pathfinding_strategy(self.strategies[self.strategy_index])
 
                 # ---------- GAME OVER INPUT ----------
                 elif self.state == "game_over":
@@ -94,9 +108,7 @@ class Game:
             elif self.state == "playing":
                 try:
                     if self.auto_pilot:
-                        self.snake.set_direction_autopilot(
-                            self.food, self.width, self.height, self.cell
-                        )
+                        self.snake.set_direction_autopilot(self.food, self.width, self.height)
 
                     ate_food = self.snake.update(self.food, self.width, self.height)
                     if ate_food:
@@ -124,8 +136,11 @@ class Game:
         score_surface = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
         self.screen.blit(score_surface, (10, 10))
 
-        mode = "AUTO (A to toggle)" if self.auto_pilot else "MANUAL (A to toggle)"
-        mode_surface = self.font.render(mode, True, (200, 200, 200))
+        algo = self.snake.pathfinder.name if hasattr(self.snake, "pathfinder") else "?"
+        status = "AUTO" if self.auto_pilot else "MANUAL"
+        hud_line = f"{status} | {algo}  (A toggle auto, S switch algo)"
+
+        mode_surface = self.font.render(hud_line, True, (200, 200, 200))
         self.screen.blit(mode_surface, (10, 40))
 
     def draw_menu(self):
@@ -141,20 +156,14 @@ class Game:
             button_color = (255, 255, 255)  # white
             text_color = (0, 0, 0)          # black
 
-        title = self.big_font.render("Snake Game 🐍", True, (255, 255, 255))
+        title = self.big_font.render("Snake Game", True, (255, 255, 255))
         self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 140))
 
         subtitle = self.font.render("Click Start or press Enter", True, (200, 200, 200))
-        self.screen.blit(
-            subtitle,
-            (self.width // 2 - subtitle.get_width() // 2, 220),
-        )
+        self.screen.blit(subtitle, (self.width // 2 - subtitle.get_width() // 2, 220))
 
-        hint = self.font.render("Press A in-game to toggle autopilot", True, (200, 200, 200))
-        self.screen.blit(
-            hint,
-            (self.width // 2 - hint.get_width() // 2, 255),
-        )
+        hint = self.font.render("In-game: A = autopilot, S = BFS/DFS", True, (200, 200, 200))
+        self.screen.blit(hint, (self.width // 2 - hint.get_width() // 2, 255))
 
         pygame.draw.rect(self.screen, button_color, self.start_button, border_radius=14)
 
@@ -172,20 +181,10 @@ class Game:
     def display_game_over(self):
         self.screen.fill((0, 0, 0))
 
-        text = self.font.render(
-            "Game Over. Press SPACE to go to menu.", True, (255, 255, 255)
-        )
-        self.screen.blit(
-            text,
-            (self.width // 2 - text.get_width() // 2, self.height // 2 - 30),
-        )
+        text = self.font.render("Game Over. Press SPACE to go to menu.", True, (255, 255, 255))
+        self.screen.blit(text, (self.width // 2 - text.get_width() // 2, self.height // 2 - 30))
 
-        score_text = self.font.render(
-            f"Final Score: {self.score}", True, (200, 200, 200)
-        )
-        self.screen.blit(
-            score_text,
-            (self.width // 2 - score_text.get_width() // 2, self.height // 2 + 10),
-        )
+        score_text = self.font.render(f"Final Score: {self.score}", True, (200, 200, 200))
+        self.screen.blit(score_text, (self.width // 2 - score_text.get_width() // 2, self.height // 2 + 10))
 
         pygame.display.flip()
